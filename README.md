@@ -35,6 +35,7 @@ ctp_service
 │   config.ini                      # 配置文件
 |   ctp_collector.py                # 行情服务demo
 |   ctp_trade.py                    # 交易服务demo
+|   ctp_trade_test.py               # 交易服务demo测试
 │
 └───ctp                             # CTP封装
 |   │   __init__.py                 # 接口定义

@@ -21,8 +21,8 @@ class TraderSpi(TraderApi):
         self._login_status= 0       # 0-未登录；1-登录成功；-1-登录失败
         self._qry_lock    = True
 
-        self.order_status = dict() # 记录订单状态
-        self.order_eqty   = dict()
+        self.order_status = dict()  # 记录订单状态
+        self.order_eqty   = dict()  # 记录订单完成数量
 
     def isErrorRspInfo(self, info):
         if info.ErrorID !=0:
