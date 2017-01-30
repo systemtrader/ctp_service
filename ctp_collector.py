@@ -132,14 +132,13 @@ class TraderSpi(TraderApi):
         self.requestid += 1
         return self.requestid
 
-    def wait_qry_finish(self, timeout=5):
+    def wait_qry_finish(self, timeout=5, message=''):
         while self._qry_lock and timeout > 0:
-            timeout -= 1
             time.sleep(1)
+            timeout -= 1
         if self._qry_lock:
-            print >>sys.stderr, "query timeout, exit."
+            print(message + ' Error: timeout {}s'.format(timeout))
             self._qry_lock = False
-            sys.exit(-1)
 
 
 class ctp_collector(object):
@@ -170,12 +169,11 @@ class ctp_collector(object):
 
         # flow path
         self.md_flowpath   = config.get('common','md_flowpath')
-        self.trade_flowpath= config.get('common','trade_flowpath')
 
         # prefix define
-        self.db_prefix     = config.get('common','db_prefix')
-        self.stream_prefix = config.get('common','stream_prefix')
-        self.quotes_prefix = config.get('common','quotes_prefix')
+        self.db_prefix     = config.get('define','db_prefix')
+        self.stream_prefix = config.get('define','stream_prefix')
+        self.quotes_prefix = config.get('define','quotes_prefix')
 
         # general settings
         self.running = True
@@ -214,22 +212,20 @@ class ctp_collector(object):
             return tme > 200000 or tme <= 23000
 
     def run(self):
-        print "start trader api", datetime.datetime.now()
-        if not os.path.exists(self.trade_flowpath):
-            os.makedirs(self.trade_flowpath)
-        self.traderapi.Create(self.trade_flowpath)
+        # create md api
+        if not os.path.exists(self.md_flowpath):
+            os.makedirs(self.md_flowpath)
+        self.traderapi.Create(self.md_flowpath)
         self.traderapi.RegisterFront(self.trader_front)
         self.traderapi.Init()
         self.traderapi.wait_qry_finish()
 
-        print "start md api", datetime.datetime.now()
-        if not os.path.exists(self.md_flowpath):
-            os.makedirs(self.md_flowpath)
+        # create trader api
         self.mdapi.Create(self.md_flowpath)
         self.mdapi.RegisterFront(self.md_front)
         self.mdapi.Init()
 
-        print "wait for market close"
+        # wait for market close
         while self.running:
             time.sleep(15)
             tme = int(datetime.datetime.now().strftime('%H%M%S'))
