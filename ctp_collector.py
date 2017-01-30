@@ -52,26 +52,25 @@ class MdSpi(MdApi):
         print "OnRspUnSubMarketData", pSpecificInstrument, pRspInfo, nRequestID, bIsLast
 
     def OnRtnDepthMarketData(self, pDepthMarketData):
-        return (
-                pDepthMarketData.TradingDay, pDepthMarketData.UpdateTime, pDepthMarketData.UpdateMillisec, \
-                pDepthMarketData.InstrumentID, pDepthMarketData.ExchangeID, pDepthMarketData.ExchangeInstID, \
-                pDepthMarketData.PreDelta, pDepthMarketData.CurrDelta, \
-                pDepthMarketData.AveragePrice, pDepthMarketData.ActionDay, \
-                pDepthMarketData.PreSettlementPrice, pDepthMarketData.PreClosePrice, pDepthMarketData.PreOpenInterest, \
-                pDepthMarketData.OpenPrice, pDepthMarketData.HighestPrice, \
-                pDepthMarketData.LowestPrice, pDepthMarketData.LastPrice, \
-                pDepthMarketData.Volume, pDepthMarketData.Turnover, pDepthMarketData.OpenInterest, \
-                pDepthMarketData.ClosePrice, pDepthMarketData.SettlementPrice, \
-                pDepthMarketData.UpperLimitPrice, pDepthMarketData.LowerLimitPrice, \
-                (pDepthMarketData.BidPrice1, pDepthMarketData.BidPrice2, pDepthMarketData.BidPrice3, \
-                    pDepthMarketData.BidPrice4, pDepthMarketData.BidPrice5), \
-                (pDepthMarketData.BidVolume1, pDepthMarketData.BidVolume2, pDepthMarketData.BidVolume3, \
-                    pDepthMarketData.BidVolume4, pDepthMarketData.BidVolume5), \
-                (pDepthMarketData.AskPrice1, pDepthMarketData.AskPrice2, pDepthMarketData.AskPrice3, \
-                    pDepthMarketData.AskPrice4, pDepthMarketData.AskPrice5), \
-                (pDepthMarketData.AskVolume1, pDepthMarketData.AskVolume2, pDepthMarketData.AskVolume3, \
-                    pDepthMarketData.AskVolume4, pDepthMarketData.AskVolume5)
-                )
+        mdf = (pDepthMarketData.TradingDay, pDepthMarketData.UpdateTime, pDepthMarketData.UpdateMillisec, \
+               pDepthMarketData.InstrumentID, pDepthMarketData.ExchangeID, pDepthMarketData.ExchangeInstID, \
+               pDepthMarketData.PreDelta, pDepthMarketData.CurrDelta, \
+               pDepthMarketData.AveragePrice, pDepthMarketData.ActionDay, \
+               pDepthMarketData.PreSettlementPrice, pDepthMarketData.PreClosePrice, pDepthMarketData.PreOpenInterest, \
+               pDepthMarketData.OpenPrice, pDepthMarketData.HighestPrice, \
+               pDepthMarketData.LowestPrice, pDepthMarketData.LastPrice, \
+               pDepthMarketData.Volume, pDepthMarketData.Turnover, pDepthMarketData.OpenInterest, \
+               pDepthMarketData.ClosePrice, pDepthMarketData.SettlementPrice, \
+               pDepthMarketData.UpperLimitPrice, pDepthMarketData.LowerLimitPrice, \
+               (pDepthMarketData.BidPrice1, pDepthMarketData.BidPrice2, pDepthMarketData.BidPrice3, \
+                pDepthMarketData.BidPrice4, pDepthMarketData.BidPrice5), \
+               (pDepthMarketData.BidVolume1, pDepthMarketData.BidVolume2, pDepthMarketData.BidVolume3, \
+                pDepthMarketData.BidVolume4, pDepthMarketData.BidVolume5), \
+               (pDepthMarketData.AskPrice1, pDepthMarketData.AskPrice2, pDepthMarketData.AskPrice3, \
+                pDepthMarketData.AskPrice4, pDepthMarketData.AskPrice5), \
+               (pDepthMarketData.AskVolume1, pDepthMarketData.AskVolume2, pDepthMarketData.AskVolume3, \
+                pDepthMarketData.AskVolume4, pDepthMarketData.AskVolume5))
+        self.on_mdf(mdf)
 
     def get_requestid(self):
         self.requestid += 1
@@ -183,22 +182,22 @@ class ctp_collector(object):
         # self.r.push(self.db_prefix + '_CTP', mdf)
         self.r.publish(self.stream_prefix + '_CTP', mdf)
         dte, tme, msc, tkr = mdf[:4]
-        updtme = datetime.datetime.strptime(dte + ' ' + tme + '.' + msc,
+        updtme = datetime.datetime.strptime('{} {}.{}'.format(dte, tme, msc),
                                             '%Y%m%d %H:%M:%S.%f')
         fields = ['echid','echtkr','predelta','delta','avgprc','actday',\
                   'presettle','preclse','preopi','opn','high','low','lastprc',\
                   'shr','val','opi','clse','settle','ulmtprc','llmtprc','bid',\
                   'bsize','ask','asize']
 
-        obj = {fields[i]: mdf[4+i] for i in enumerate(fields)}
+        obj = dict(zip(fields, mdf[4:]))
         obj['dte']     = dte
         obj['tkr']     = tkr
         obj['updtme']  = updtme
         obj['opi']     = obj['preopi']    if obj['opi']  == 0 else obj['opi']
         obj['opn']     = obj['presettle'] if obj['opn']  == 0 else obj['opn']
-        opn['high']    = obj['presettle'] if obj['high'] == 0 else obj['high']
-        opn['low']     = obj['presettle'] if obj['low']  == 0 else obj['low']
-        opn['lastprc'] = obj['presettle'] if obj['lastprc'] == 0 else obj['lastprc']
+        obj['high']    = obj['presettle'] if obj['high'] == 0 else obj['high']
+        obj['low']     = obj['presettle'] if obj['low']  == 0 else obj['low']
+        obj['lastprc'] = obj['presettle'] if obj['lastprc'] == 0 else obj['lastprc']
         obj['settle']  = obj['presettle'] if obj['settle']  == 0 else obj['settle']
         obj['ulmtprc'] = obj['high']      if obj['ulmtprc'] == 0 else obj['ulmtprc']
         obj['llmtprc'] = obj['low']       if obj['llmtprc'] == 0 else obj['llmtprc']
