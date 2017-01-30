@@ -177,8 +177,15 @@ class ctp_collector(object):
         # general settings
         self.running = True
 
+    def data_filter(self, data):
+        if isinstance(data, float) and data == sys.float_info.max:
+            return 0
+        if isinstance(data, tuple):
+            return tuple(self.data_filter(x) for x in data)
+        return data
+
     def on_mdf(self, mdf):
-        mdf = tuple((x != sys.float_info.max) * 1 if isinstance(x, float) else x for x in mdf)
+        mdf = self.data_filter(mdf)
         # self.r.push(self.db_prefix + '_CTP', mdf)
         self.r.publish(self.stream_prefix + '_CTP', mdf)
         dte, tme, msc, tkr = mdf[:4]
