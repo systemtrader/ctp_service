@@ -1,19 +1,18 @@
 # -*- coding: utf-8 -*- #
-import sys, os, datetime, signal, time
-import redis
+import sys, os, datetime, signal, time, redis
 from ctp import MdApi, TraderApi, ApiStruct
 from ConfigParser import ConfigParser
 
 
 class MdSpi(MdApi):
     """ 实现MdApi的方法 """
-    def __init__(self, config, on_mdf):
-        
-        self.broker_id   = config.get('CTP','broker_id')
-        self.investor_id = config.get('CTP','investor_id')
-        self.password    = config.get('CTP','password')
+    def __init__(self, broker_id, investor_id, password, on_mdf):
+
+        self.broker_id   = broker_id
+        self.investor_id = investor_id
+        self.password    = password
         self.on_mdf      = on_mdf
-        
+
         self.requestid   = 0
         self.instruments = []
 
@@ -49,31 +48,50 @@ class MdSpi(MdApi):
     def OnRspSubMarketData(self, pSpecificInstrument, pRspInfo, nRequestID, bIsLast):
         print 'OnRspSubMarketData:', pSpecificInstrument, pRspInfo, nRequestID, bIsLast
 
-    def OnRspUnSubMarketData(self, spec_instrument, info, requestid, islast):
-        print "OnRspUnSubMarketData", spec_instrument, info, requestid, islast
+    def OnRspUnSubMarketData(self, pSpecificInstrument, pRspInfo, nRequestID, bIsLast):
+        print "OnRspUnSubMarketData", pSpecificInstrument, pRspInfo, nRequestID, bIsLast
 
-    def OnRtnDepthMarketData(self, depth_market_data):
-        self.on_mdf(depth_market_data)
+    def OnRtnDepthMarketData(self, pDepthMarketData):
+        return (
+                pDepthMarketData.TradingDay, pDepthMarketData.UpdateTime, pDepthMarketData.UpdateMillisec, \
+                pDepthMarketData.InstrumentID, pDepthMarketData.ExchangeID, pDepthMarketData.ExchangeInstID, \
+                pDepthMarketData.PreDelta, pDepthMarketData.CurrDelta, \
+                pDepthMarketData.AveragePrice, pDepthMarketData.ActionDay, \
+                pDepthMarketData.PreSettlementPrice, pDepthMarketData.PreClosePrice, pDepthMarketData.PreOpenInterest, \
+                pDepthMarketData.OpenPrice, pDepthMarketData.HighestPrice, \
+                pDepthMarketData.LowestPrice, pDepthMarketData.LastPrice, \
+                pDepthMarketData.Volume, pDepthMarketData.Turnover, pDepthMarketData.OpenInterest, \
+                pDepthMarketData.ClosePrice, pDepthMarketData.SettlementPrice, \
+                pDepthMarketData.UpperLimitPrice, pDepthMarketData.LowerLimitPrice, \
+                (pDepthMarketData.BidPrice1, pDepthMarketData.BidPrice2, pDepthMarketData.BidPrice3, \
+                    pDepthMarketData.BidPrice4, pDepthMarketData.BidPrice5), \
+                (pDepthMarketData.BidVolume1, pDepthMarketData.BidVolume2, pDepthMarketData.BidVolume3, \
+                    pDepthMarketData.BidVolume4, pDepthMarketData.BidVolume5), \
+                (pDepthMarketData.AskPrice1, pDepthMarketData.AskPrice2, pDepthMarketData.AskPrice3, \
+                    pDepthMarketData.AskPrice4, pDepthMarketData.AskPrice5), \
+                (pDepthMarketData.AskVolume1, pDepthMarketData.AskVolume2, pDepthMarketData.AskVolume3, \
+                    pDepthMarketData.AskVolume4, pDepthMarketData.AskVolume5)
+                )
 
     def get_requestid(self):
         self.requestid += 1
         return self.requestid
-    
-    def instruments_add(self, tkr):
+
+    def on_tkr(self, tkr):
         self.instruments.append(tkr)
 
-        
+
 class TraderSpi(TraderApi):
     """ 实现TraderApi的方法 """
-    def __init__(self, config, on_tkr):
+    def __init__(self, broker_id, investor_id, password, on_tkr):
 
-        self.broker_id   = config.get('CTP','broker_id')
-        self.investor_id = config.get('CTP','investor_id')
-        self.password    = config.get('CTP','password')
+        self.broker_id   = broker_id
+        self.investor_id = investor_id
+        self.password    = password
         self.on_tkr      = on_tkr
-        
+
         self.requestid = 0
-        self._qry_lock = True 
+        self._qry_lock = True
 
     def isErrorRspInfo(self, info):
         if info.ErrorID !=0:
@@ -122,8 +140,8 @@ class TraderSpi(TraderApi):
             print >>sys.stderr, "query timeout, exit."
             self._qry_lock = False
             sys.exit(-1)
-            
-        
+
+
 class ctp_collector(object):
     """ ctp collector """
     def __init__(self, dte, config, flag):
@@ -131,35 +149,83 @@ class ctp_collector(object):
         self.config = config
         self.flag   = flag
 
-        self.md_front     = config.get('CTP','md_front')
-        self.trader_front = config.get('CTP','trader_front')
+        # ctp config
+        md_front       = config.get('CTP','md_front')
+        trader_front   = config.get('CTP','trader_front')
+        broker_id      = config.get('CTP','broker_id')
+        investor_id    = config.get('CTP','investor_id')
+        password       = config.get('CTP','password')
 
-        self.mdapi     = MdSpi(config, self.on_mdf)
-        self.traderapi = TraderSpi(config, self.on_tkr)
+        self.mdapi     = MdSpi(broker_id, investor_id, password, self.on_mdf)
+        self.traderapi = TraderSpi(broker_id, investor_id, password, self.mdapi.on_tkr)
+        self.md_front  = md_front
+        self.trader_front = trader_front
 
+        # redis config
+        redis_host     = config.get('redis','host')
+        redis_port     = config.get('redis','port')
+        redis_password = config.get('redis','password')
+
+        self.r = redis.Redis(host=redis_host, port=redis_port, password=redis_password)
+
+        # flow path
+        self.md_flowpath   = config.get('common','md_flowpath')
+        self.trade_flowpath= config.get('common','trade_flowpath')
+
+        # prefix define
+        self.db_prefix     = config.get('common','db_prefix')
+        self.stream_prefix = config.get('common','stream_prefix')
+        self.quotes_prefix = config.get('common','quotes_prefix')
+
+        # general settings
         self.running = True
 
-    def on_tkr(self, tkr):
-        self.mdapi.instruments_add(tkr)
-
     def on_mdf(self, mdf):
-        print mdf
+        mdf = tuple((x != sys.float_info.max) * 1 if isinstance(x, float) else x for x in mdf)
+        # self.r.push(self.db_prefix + '_CTP', mdf)
+        self.r.publish(self.stream_prefix + '_CTP', mdf)
+        dte, tme, msc, tkr = mdf[:4]
+        updtme = datetime.datetime.strptime(dte + ' ' + tme + '.' + msc,
+                                            '%Y%m%d %H:%M:%S.%f')
+        fields = ['echid','echtkr','predelta','delta','avgprc','actday',\
+                  'presettle','preclse','preopi','opn','high','low','lastprc',\
+                  'shr','val','opi','clse','settle','ulmtprc','llmtprc','bid',\
+                  'bsize','ask','asize']
+
+        obj = {fields[i]: mdf[4+i] for i in enumerate(fields)}
+        obj['dte']     = dte
+        obj['tkr']     = tkr
+        obj['updtme']  = updtme
+        obj['opi']     = obj['preopi']    if obj['opi']  == 0 else obj['opi']
+        obj['opn']     = obj['presettle'] if obj['opn']  == 0 else obj['opn']
+        opn['high']    = obj['presettle'] if obj['high'] == 0 else obj['high']
+        opn['low']     = obj['presettle'] if obj['low']  == 0 else obj['low']
+        opn['lastprc'] = obj['presettle'] if obj['lastprc'] == 0 else obj['lastprc']
+        obj['settle']  = obj['presettle'] if obj['settle']  == 0 else obj['settle']
+        obj['ulmtprc'] = obj['high']      if obj['ulmtprc'] == 0 else obj['ulmtprc']
+        obj['llmtprc'] = obj['low']       if obj['llmtprc'] == 0 else obj['llmtprc']
+
+        self.r.set(self.quotes_prefix + '_' + tkr, obj)
 
     def is_tradetme(self, tme):
         if self.flag == 'day':
-            return tme < 153000
+            return 90000 < tme < 153000
         if self.flag == 'night':
             return tme > 200000 or tme <= 23000
-        
+
     def run(self):
         print "start trader api", datetime.datetime.now()
-        self.traderapi.Create('stream/')
+        if not os.path.exists(self.trade_flowpath):
+            os.makedirs(self.trade_flowpath)
+        self.traderapi.Create(self.trade_flowpath)
         self.traderapi.RegisterFront(self.trader_front)
         self.traderapi.Init()
         self.traderapi.wait_qry_finish()
 
         print "start md api", datetime.datetime.now()
-        self.mdapi.Create('stream/')
+        if not os.path.exists(self.md_flowpath):
+            os.makedirs(self.md_flowpath)
+        self.mdapi.Create(self.md_flowpath)
         self.mdapi.RegisterFront(self.md_front)
         self.mdapi.Init()
 
@@ -173,11 +239,9 @@ class ctp_collector(object):
     def signal_handler(self, signal, frame):
         print "reveice signal", signal, ", exit."
         self.running = False
-        
+
 
 if __name__ == '__main__':
-
-    dte = int(datetime.datetime.today().strftime('%Y%m%d'))
 
     if len(sys.argv) < 3:
         print >>sys.stderr, 'Usage: python %s <config> <day|night>' % sys.argv[0]
@@ -187,18 +251,26 @@ if __name__ == '__main__':
         print >>sys.stderr, 'Error: config file not fild at %s' % sys.argv[1]
         sys.exit(-1)
 
-    config = ConfigParser()
-    config.read(sys.argv[1])
-
     if sys.argv[2] not in ['day','night']:
         print >>sys.stderr, 'Error: expect flag [day|night], input is %s' % sys.argv[2]
         sys.exit(-1)
-        
+
+    config = ConfigParser()
+    config.read(sys.argv[1])
+
     flag = sys.argv[2]
-    
+
+    dte  = int(datetime.datetime.today().strftime('%Y%m%d'))
+
+    # 生产环境一般是配置每天启动，需要下面的部分判断是否是交易日
+    # holidays = [int(x[0]) for x in [line.strip().split() for line in open(config.get('common','calendar'))] if len(x) < 6]
+
+    # if dte in holidays:
+    #     print >>sys.stderr, 'not trade day, exit.'
+    #     sys.exit(0)
+
     p = ctp_collector(dte, config, flag)
-    
+
     signal.signal(signal.SIGINT, p.signal_handler)
-    
+
     p.run()
-    
