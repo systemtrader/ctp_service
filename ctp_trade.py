@@ -20,7 +20,9 @@ class TraderSpi(TraderApi):
         self._orderref    = None
         self._login_status= 0       # 0-未登录；1-登录成功；-1-登录失败
         self._qry_lock    = True
-
+        self._trading_day = None
+        self._settlement_info_confirm = False # 是否确认持仓
+        
         self.order_status = dict()  # 记录订单状态
         self.order_eqty   = dict()  # 记录订单完成数量
 
@@ -47,11 +49,11 @@ class TraderSpi(TraderApi):
         print('OnRspUserLogin:', pRspInfo)
         if bIsLast: self._qry_lock = False
         if pRspInfo.ErrorID == 0: # Success
-            self.front_id   = pRspUserLogin.FrontID
-            self.session_id = pRspUserLogin.SessionID
-            self._orderref  = int(pRspUserLogin.MaxOrderRef or '0')
+            self.front_id     = pRspUserLogin.FrontID
+            self.session_id   = pRspUserLogin.SessionID
+            self._orderref    = int(pRspUserLogin.MaxOrderRef or '0')
             self.login_status = 1
-            self.tradingday = self.GetTradingDay()
+            self._trading_day = self.GetTradingDay()
         else:
             self.login_status = -1
 
@@ -74,7 +76,9 @@ class TraderSpi(TraderApi):
     def OnRspQrySettlementInfoConfirm(self, pSettlementInfoConfirm, pRspInfo, nRequestID, bIsLast):
         print('OnRspQrySettlementInfoConfirm: ', pSettlementInfoConfirm, pRspInfo, nRequestID, bIsLast)
         if bIsLast: self._qry_lock = False
-
+        if pSettlementInfoConfirm and pSettlementInfoConfirm.ConfirmDate == self._trading_day:
+            self._settlement_info_confirm = True
+        
     def OnRspOrderInsert(self, pInputOrder, pRspInfo, nRequestID, bIsLast):
         print('OnRspOrderInsert: ', pInputOrder, pRspInfo, nRequestID, bIsLast)
 
@@ -129,7 +133,7 @@ class TraderSpi(TraderApi):
         print('ReqQrySettlementInfo')
         self._qry_lock = True
         reqid = self.get_requestid()
-        req   = ApiStruct.QrySettlementInfo(BroketID=self.broker_id, InvestorID=self.investor_id, TradingDay=self.tradingday)
+        req   = ApiStruct.QrySettlementInfo(BroketID=self.broker_id, InvestorID=self.investor_id, TradingDay=self._trading_day)
         self.ReqQrySettlementInfo(req, reqid)
         self.wait_qry_finish(message = 'ReqQrySettlementInfo')
 
@@ -150,7 +154,10 @@ class TraderSpi(TraderApi):
         req   = ApiStruct.QrySettlementInfo(BroketID=self.broker_id, InvestorID=self.investor_id)
         self.ReqQrySettlementInfoConfirm(req, reqid)
         self.wait_qry_finish(message = 'ReqQrySettlementInfoConfirm')
-
+        if not self._settlement_info_confirm:
+            self.qry_settlement_info()
+            self.settlement_confirm()
+            
     def qry_accounts(self):
         """ 查询账户 """
         print('ReqQryTradingAccount')
@@ -320,8 +327,6 @@ class ctp_trade(object):
         self.orderref = self.traderapi.orderref
 
         # confirm settlement info
-        self.traderapi.qry_settlement_info()
-        self.traderapi.settlement_confirm()
         self.traderapi.qry_settlement_confirm()
 
         # query accounts
