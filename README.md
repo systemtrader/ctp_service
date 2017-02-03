@@ -23,7 +23,7 @@ $ sudo service redis-server start   # 启动redis-server
 $ sudo pip install redis            # 安装redis-py
 ```
 
-注：目前仅支持Linux和Windows下的64位Python2.7.x。
+注：目前仅支持Linux和Windows下的64位Python2.7.x(Windows需要设置redis服务器地址)。
 
 项目说明
 -------
